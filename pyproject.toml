@@ -91,6 +91,7 @@ ignore = ["COM812", "D", "E501", "EM", "TRY003"]
 
 [tool.mypy]
 python_version = "3.12"
+mypy_path = "tests"
 plugins = ["mypy_django_plugin.main"]
 pretty = true
 show_error_codes = true
@@ -99,7 +100,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [tool.django-stubs]
-django_settings_module = "tests.settings.base"
+django_settings_module = "settings.base"
 
 [tool.pytest.ini_options]
 addopts = "--cov=django_borg --cov-report=term-missing --cov-report=xml --no-cov-on-fail"

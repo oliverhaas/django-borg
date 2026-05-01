@@ -13,6 +13,13 @@ DATABASES = {
     },
 }
 
+MIGRATION_MODULES = {"django_borg": None}
+
 USE_TZ = True
 
 ROOT_URLCONF = "settings.urls"
+
+BORG_MIN_WEIGHT = 5
+BORG_MIN_CONFIDENCE = 0.9
+BORG_AI_VOTER_IDENTIFIER = "ai"
+BORG_AI_VOTER_WEIGHT = 1

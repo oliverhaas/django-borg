@@ -1,6 +1,7 @@
 """Concrete models are imported here so Django's app loader sees them."""
 
 from django_borg.models.mappings import FieldMapping, ValueMapping
+from django_borg.models.rules import Rule
 from django_borg.models.schemas import (
     SourceField,
     SourceSchema,
@@ -12,6 +13,7 @@ from django_borg.models.votes import Vote
 
 __all__ = [
     "FieldMapping",
+    "Rule",
     "SourceField",
     "SourceSchema",
     "TargetField",

@@ -67,3 +67,78 @@ class SchemaAssimilator:
             defaults={"weight": conf.ai_voter_weight()},
         )
         return voter
+
+    def assimilate(self, raw_item: dict[str, str], *, source: str) -> AssimilationResult:
+        from django_borg.models.schemas import SourceField, SourceSchema  # noqa: PLC0415
+        from django_borg.resolution import resolve_field  # noqa: PLC0415
+
+        source_schema, _ = SourceSchema.objects.get_or_create(name=source)
+        cost = AssimilationCost()
+        unresolved: list[str] = []
+        mapped: dict[str, str] = {}
+
+        for src_field_name, src_value in raw_item.items():
+            SourceField.objects.get_or_create(schema=source_schema, name=src_field_name)
+
+            field_res = resolve_field(
+                source_schema,
+                src_field_name,
+                self.target_schema,
+                ai=self.ai,
+                ai_voter=self.ai_voter,
+            )
+            self._record_cost(field_res, cost)
+
+            if field_res.blocked or field_res.target is None:
+                unresolved.append(src_field_name)
+                continue
+
+            target_field_name = field_res.target
+            try:
+                target_field = TargetField.objects.get(
+                    schema=self.target_schema,
+                    name=target_field_name,
+                )
+            except TargetField.DoesNotExist:
+                unresolved.append(src_field_name)
+                continue
+
+            value = self._resolve_value_or_raw(target_field, src_value, cost)
+            if value is None:
+                unresolved.append(src_field_name)
+                continue
+            mapped[target_field_name] = value
+
+        return AssimilationResult(
+            product=self.target_model(**mapped),
+            unresolved=unresolved,
+            cost=cost,
+        )
+
+    def _resolve_value_or_raw(
+        self,
+        target_field: TargetField,
+        src_value: str,
+        cost: AssimilationCost,
+    ) -> str | None:
+        if not src_value:
+            return src_value
+        if not target_field.is_enum:
+            return src_value
+        from django_borg.resolution import resolve_value  # noqa: PLC0415
+
+        res = resolve_value(target_field, src_value, ai=self.ai, ai_voter=self.ai_voter)
+        self._record_cost(res, cost)
+        if res.blocked or res.target is None:
+            return None
+        return res.target
+
+    @staticmethod
+    def _record_cost(resolution: object, cost: AssimilationCost) -> None:
+        from django_borg.resolution import ResolutionSource  # noqa: PLC0415
+
+        source = getattr(resolution, "source", None)
+        if source == ResolutionSource.AI:
+            cost.record_ai()
+        elif source in (ResolutionSource.MAPPING, ResolutionSource.RULE):
+            cost.record_deterministic()

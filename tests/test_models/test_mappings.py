@@ -5,7 +5,9 @@ from django_borg.models import (
     FieldMapping,
     SourceField,
     SourceSchema,
+    TargetField,
     TargetSchema,
+    ValueMapping,
 )
 
 
@@ -69,3 +71,39 @@ def test_field_mapping_unique(source_schema, target_schema):
             source_field="Farbe",
             target_schema=target_schema,
         )
+
+
+@pytest.fixture
+def color_field(target_schema):
+    return TargetField.objects.create(schema=target_schema, name="color", is_enum=True)
+
+
+@pytest.mark.django_db
+def test_value_mapping_defaults_zero_confidence(color_field):
+    mapping = ValueMapping.objects.create(target_field=color_field, source_value="Rot")
+    assert mapping.current_target == ""
+    assert mapping.confidence == 0.0
+    assert mapping.total_weight == 0
+
+
+@pytest.mark.django_db
+def test_value_mapping_str_unresolved(color_field):
+    mapping = ValueMapping.objects.create(target_field=color_field, source_value="Rot")
+    assert str(mapping) == "Product.color: 'Rot' -> '?'"
+
+
+@pytest.mark.django_db
+def test_value_mapping_str_resolved(color_field):
+    mapping = ValueMapping.objects.create(
+        target_field=color_field,
+        source_value="Rot",
+        current_target="red",
+    )
+    assert str(mapping) == "Product.color: 'Rot' -> 'red'"
+
+
+@pytest.mark.django_db
+def test_value_mapping_unique_per_field_value(color_field):
+    ValueMapping.objects.create(target_field=color_field, source_value="Rot")
+    with pytest.raises(IntegrityError):
+        ValueMapping.objects.create(target_field=color_field, source_value="Rot")

@@ -79,6 +79,7 @@ ignore = ["COM812", "D", "E501", "EM", "TRY003"]
   "ARG",
   "F841",
   "FBT",
+  "PLR2004",
   "PT006",
   "PT011",
   "PT013",
@@ -86,6 +87,7 @@ ignore = ["COM812", "D", "E501", "EM", "TRY003"]
   "S101",
   "S105",
 ]
+"django_borg/models/**" = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.12"

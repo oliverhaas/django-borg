@@ -8,6 +8,7 @@ from django_borg.models.schemas import (
     TargetSchema,
 )
 from django_borg.models.voters import Voter
+from django_borg.models.votes import Vote
 
 __all__ = [
     "FieldMapping",
@@ -16,5 +17,6 @@ __all__ = [
     "TargetField",
     "TargetSchema",
     "ValueMapping",
+    "Vote",
     "Voter",
 ]

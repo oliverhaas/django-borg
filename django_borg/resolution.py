@@ -5,10 +5,12 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from django_borg import conf
+from django_borg.models.mappings import FieldMapping, ValueMapping
 from django_borg.models.rules import Rule
 
 if TYPE_CHECKING:
-    from django_borg.models.schemas import TargetField, TargetSchema
+    from django_borg.models.schemas import SourceSchema, TargetField, TargetSchema
 
 
 class ResolutionSource(enum.StrEnum):
@@ -65,3 +67,29 @@ def match_value_rule(target_field: TargetField, source_value: str) -> Rule | Non
         if _matches(rule, source_value):
             return rule
     return None
+
+
+def lookup_field_mapping(
+    source_schema: SourceSchema,
+    source_field: str,
+    target_schema: TargetSchema,
+) -> FieldMapping | None:
+    return FieldMapping.objects.filter(
+        source_schema=source_schema,
+        source_field=source_field,
+        target_schema=target_schema,
+        total_weight__gte=conf.min_weight(),
+        confidence__gte=conf.min_confidence(),
+    ).first()
+
+
+def lookup_value_mapping(
+    target_field: TargetField,
+    source_value: str,
+) -> ValueMapping | None:
+    return ValueMapping.objects.filter(
+        target_field=target_field,
+        source_value=source_value,
+        total_weight__gte=conf.min_weight(),
+        confidence__gte=conf.min_confidence(),
+    ).first()

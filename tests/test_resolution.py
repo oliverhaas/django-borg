@@ -1,9 +1,11 @@
 import pytest
+from django.test import override_settings
 
-from django_borg.models import Rule, TargetSchema
+from django_borg.models import FieldMapping, Rule, SourceSchema, TargetSchema, Vote
 from django_borg.resolution import (
     Resolution,
     ResolutionSource,
+    lookup_field_mapping,
     match_field_rule,
 )
 from tests import factories
@@ -77,3 +79,60 @@ def test_resolution_blocked():
     assert res.blocked is True
     assert res.target is None
     assert res.reason == "DONT rule"
+
+
+@pytest.mark.django_db
+def test_lookup_returns_none_when_no_mapping():
+    src = SourceSchema.objects.create(name="acme")
+    schema = TargetSchema.objects.create(name="Product")
+    assert lookup_field_mapping(src, "Farbe", schema) is None
+
+
+@pytest.mark.django_db
+def test_lookup_returns_none_when_below_thresholds():
+    src = SourceSchema.objects.create(name="acme")
+    schema = TargetSchema.objects.create(name="Product")
+    mapping = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Farbe",
+        target_schema=schema,
+    )
+    ai = factories.AiVoterFactory()
+    Vote.objects.create(mapping=mapping, voter=ai, agreed_target="color")
+    # Only 1 weight -> below default BORG_MIN_WEIGHT (5).
+    assert lookup_field_mapping(src, "Farbe", schema) is None
+
+
+@pytest.mark.django_db
+def test_lookup_returns_mapping_when_above_thresholds():
+    src = SourceSchema.objects.create(name="acme")
+    schema = TargetSchema.objects.create(name="Product")
+    mapping = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Farbe",
+        target_schema=schema,
+    )
+    reviewer = factories.ReviewerVoterFactory()  # weight=100
+    Vote.objects.create(mapping=mapping, voter=reviewer, agreed_target="color")
+    found = lookup_field_mapping(src, "Farbe", schema)
+    assert found == mapping
+
+
+@pytest.mark.django_db
+@override_settings(BORG_MIN_CONFIDENCE=0.6)
+def test_lookup_respects_overridden_confidence():
+    src = SourceSchema.objects.create(name="acme")
+    schema = TargetSchema.objects.create(name="Product")
+    mapping = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Farbe",
+        target_schema=schema,
+    )
+    ai = factories.AiVoterFactory()
+    # 7 votes for 'color', 3 for 'hue' -> 0.7 confidence, weight 10.
+    for _ in range(7):
+        Vote.objects.create(mapping=mapping, voter=ai, agreed_target="color")
+    for _ in range(3):
+        Vote.objects.create(mapping=mapping, voter=ai, agreed_target="hue")
+    found = lookup_field_mapping(src, "Farbe", schema)
+    assert found == mapping

@@ -88,6 +88,7 @@ ignore = ["COM812", "D", "E501", "EM", "TRY003"]
   "S105",
 ]
 "django_borg/models/**" = ["RUF012"]
+"django_borg/migrations/**" = ["ALL"]
 
 [tool.mypy]
 python_version = "3.12"

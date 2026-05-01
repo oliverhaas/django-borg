@@ -14,7 +14,7 @@ DATABASES = {
     },
 }
 
-MIGRATION_MODULES = {"django_borg": None, "testapp": None}
+MIGRATION_MODULES = {"testapp": None}
 
 USE_TZ = True
 

@@ -2,13 +2,22 @@ import pytest
 from django.test import override_settings
 
 from django_borg.ai import FakeInferencer
-from django_borg.models import FieldMapping, Rule, SourceSchema, TargetSchema, Vote
+from django_borg.models import (
+    FieldMapping,
+    Rule,
+    SourceSchema,
+    TargetField,
+    TargetSchema,
+    ValueMapping,
+    Vote,
+)
 from django_borg.resolution import (
     Resolution,
     ResolutionSource,
     lookup_field_mapping,
     match_field_rule,
     resolve_field,
+    resolve_value,
 )
 from tests import factories
 
@@ -218,3 +227,53 @@ def test_resolve_field_ai_failure_returns_blocked():
     res = resolve_field(src, "Mystery", schema, ai=ai, ai_voter=ai_voter)
     assert res.blocked is True
     assert "Mystery" in res.reason
+
+
+@pytest.mark.django_db
+def test_resolve_value_uses_value_rule():
+    schema = TargetSchema.objects.create(name="Product")
+    color = TargetField.objects.create(schema=schema, name="color", is_enum=True)
+    factories.ValueRuleFactory(
+        target_schema=schema,
+        target_field=color,
+        source_pattern="Rot",
+        target="red",
+    )
+    ai = FakeInferencer()
+    res = resolve_value(color, "Rot", ai=ai, ai_voter=factories.AiVoterFactory())
+    assert res.source == ResolutionSource.RULE
+    assert res.target == "red"
+
+
+@pytest.mark.django_db
+def test_resolve_value_uses_high_confidence_mapping():
+    schema = TargetSchema.objects.create(name="Product")
+    color = TargetField.objects.create(schema=schema, name="color", is_enum=True)
+    mapping = ValueMapping.objects.create(target_field=color, source_value="Rot")
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=mapping, voter=reviewer, agreed_target="red")
+    ai = FakeInferencer()
+    res = resolve_value(color, "Rot", ai=ai, ai_voter=factories.AiVoterFactory())
+    assert res.source == ResolutionSource.MAPPING
+    assert res.target == "red"
+
+
+@pytest.mark.django_db
+def test_resolve_value_falls_through_to_ai_and_records_vote():
+    schema = TargetSchema.objects.create(name="Product")
+    color = TargetField.objects.create(schema=schema, name="color", is_enum=True)
+    ai = FakeInferencer(value_map={("color", "Rot"): "red"})
+    res = resolve_value(color, "Rot", ai=ai, ai_voter=factories.AiVoterFactory())
+    assert res.source == ResolutionSource.AI
+    assert res.target == "red"
+    mapping = ValueMapping.objects.get(target_field=color, source_value="Rot")
+    assert mapping.votes.count() == 1
+
+
+@pytest.mark.django_db
+def test_resolve_value_ai_failure_returns_blocked():
+    schema = TargetSchema.objects.create(name="Product")
+    color = TargetField.objects.create(schema=schema, name="color", is_enum=True)
+    ai = FakeInferencer()
+    res = resolve_value(color, "Rot", ai=ai, ai_voter=factories.AiVoterFactory())
+    assert res.blocked is True

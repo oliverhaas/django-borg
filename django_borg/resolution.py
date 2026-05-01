@@ -128,3 +128,33 @@ def resolve_field(
     )
     Vote.objects.create(mapping=mapping, voter=ai_voter, agreed_target=target)
     return Resolution.from_ai(target)
+
+
+def resolve_value(
+    target_field: TargetField,
+    source_value: str,
+    *,
+    ai: Inferencer,
+    ai_voter: Voter,
+) -> Resolution:
+    rule = match_value_rule(target_field, source_value)
+    if rule is not None:
+        if rule.polarity == Rule.Polarity.DONT:
+            return Resolution.block(reason=f"DONT rule on value {source_value!r}")
+        return Resolution.from_rule(rule.target)
+
+    mapping = lookup_value_mapping(target_field, source_value)
+    if mapping is not None:
+        return Resolution.from_mapping(mapping.current_target)
+
+    try:
+        target = ai.map_value(source_value, target_field=target_field.name)
+    except Exception as exc:  # noqa: BLE001
+        return Resolution.block(reason=f"AI failed for value {source_value!r}: {exc}")
+
+    mapping, _ = ValueMapping.objects.get_or_create(
+        target_field=target_field,
+        source_value=source_value,
+    )
+    Vote.objects.create(mapping=mapping, voter=ai_voter, agreed_target=target)
+    return Resolution.from_ai(target)

@@ -8,9 +8,12 @@ from typing import TYPE_CHECKING
 from django_borg import conf
 from django_borg.models.mappings import FieldMapping, ValueMapping
 from django_borg.models.rules import Rule
+from django_borg.models.votes import Vote
 
 if TYPE_CHECKING:
+    from django_borg.ai import Inferencer
     from django_borg.models.schemas import SourceSchema, TargetField, TargetSchema
+    from django_borg.models.voters import Voter
 
 
 class ResolutionSource(enum.StrEnum):
@@ -93,3 +96,35 @@ def lookup_value_mapping(
         total_weight__gte=conf.min_weight(),
         confidence__gte=conf.min_confidence(),
     ).first()
+
+
+def resolve_field(
+    source_schema: SourceSchema,
+    source_field: str,
+    target_schema: TargetSchema,
+    *,
+    ai: Inferencer,
+    ai_voter: Voter,
+) -> Resolution:
+    rule = match_field_rule(target_schema, source_field)
+    if rule is not None:
+        if rule.polarity == Rule.Polarity.DONT:
+            return Resolution.block(reason=f"DONT rule on {source_field!r}")
+        return Resolution.from_rule(rule.target)
+
+    mapping = lookup_field_mapping(source_schema, source_field, target_schema)
+    if mapping is not None:
+        return Resolution.from_mapping(mapping.current_target)
+
+    try:
+        target = ai.map_field(source_field, target_schema=target_schema.name)
+    except Exception as exc:  # noqa: BLE001
+        return Resolution.block(reason=f"AI failed for field {source_field!r}: {exc}")
+
+    mapping, _ = FieldMapping.objects.get_or_create(
+        source_schema=source_schema,
+        source_field=source_field,
+        target_schema=target_schema,
+    )
+    Vote.objects.create(mapping=mapping, voter=ai_voter, agreed_target=target)
+    return Resolution.from_ai(target)

@@ -1,12 +1,14 @@
 import pytest
 from django.test import override_settings
 
+from django_borg.ai import FakeInferencer
 from django_borg.models import FieldMapping, Rule, SourceSchema, TargetSchema, Vote
 from django_borg.resolution import (
     Resolution,
     ResolutionSource,
     lookup_field_mapping,
     match_field_rule,
+    resolve_field,
 )
 from tests import factories
 
@@ -136,3 +138,83 @@ def test_lookup_respects_overridden_confidence():
         Vote.objects.create(mapping=mapping, voter=ai, agreed_target="hue")
     found = lookup_field_mapping(src, "Farbe", schema)
     assert found == mapping
+
+
+@pytest.mark.django_db
+def test_resolve_field_returns_rule_target_when_rule_matches():
+    schema = TargetSchema.objects.create(name="Product")
+    src = SourceSchema.objects.create(name="acme")
+    factories.FieldRuleFactory(
+        target_schema=schema,
+        source_pattern="Farbe",
+        target="color",
+    )
+    ai = FakeInferencer()
+    ai_voter = factories.AiVoterFactory()
+    res = resolve_field(src, "Farbe", schema, ai=ai, ai_voter=ai_voter)
+    assert res.source == ResolutionSource.RULE
+    assert res.target == "color"
+    # Rule wins, no AI call recorded.
+    assert ai.calls == []
+
+
+@pytest.mark.django_db
+def test_resolve_field_blocked_by_dont_rule():
+    schema = TargetSchema.objects.create(name="Product")
+    src = SourceSchema.objects.create(name="acme")
+    factories.FieldRuleFactory(
+        target_schema=schema,
+        source_pattern="internal_id",
+        polarity=Rule.Polarity.DONT,
+        target="",
+    )
+    ai = FakeInferencer()
+    ai_voter = factories.AiVoterFactory()
+    res = resolve_field(src, "internal_id", schema, ai=ai, ai_voter=ai_voter)
+    assert res.blocked is True
+    assert ai.calls == []
+
+
+@pytest.mark.django_db
+def test_resolve_field_returns_mapping_when_high_confidence():
+    schema = TargetSchema.objects.create(name="Product")
+    src = SourceSchema.objects.create(name="acme")
+    mapping = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Farbe",
+        target_schema=schema,
+    )
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=mapping, voter=reviewer, agreed_target="color")
+    ai = FakeInferencer()
+    ai_voter = factories.AiVoterFactory()
+    res = resolve_field(src, "Farbe", schema, ai=ai, ai_voter=ai_voter)
+    assert res.source == ResolutionSource.MAPPING
+    assert res.target == "color"
+    assert ai.calls == []
+
+
+@pytest.mark.django_db
+def test_resolve_field_falls_through_to_ai_and_records_vote():
+    schema = TargetSchema.objects.create(name="Product")
+    src = SourceSchema.objects.create(name="acme")
+    ai = FakeInferencer(field_map={"Farbe": "color"})
+    ai_voter = factories.AiVoterFactory()
+    res = resolve_field(src, "Farbe", schema, ai=ai, ai_voter=ai_voter)
+    assert res.source == ResolutionSource.AI
+    assert res.target == "color"
+    # Vote recorded against an auto-created mapping
+    mapping = FieldMapping.objects.get(source_schema=src, source_field="Farbe")
+    assert mapping.votes.count() == 1
+    assert mapping.votes.first().agreed_target == "color"
+
+
+@pytest.mark.django_db
+def test_resolve_field_ai_failure_returns_blocked():
+    schema = TargetSchema.objects.create(name="Product")
+    src = SourceSchema.objects.create(name="acme")
+    ai = FakeInferencer()  # empty -> raises LookupError
+    ai_voter = factories.AiVoterFactory()
+    res = resolve_field(src, "Mystery", schema, ai=ai, ai_voter=ai_voter)
+    assert res.blocked is True
+    assert "Mystery" in res.reason

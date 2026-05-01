@@ -4,6 +4,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django_borg",
+    "testapp",
 ]
 
 DATABASES = {
@@ -13,7 +14,7 @@ DATABASES = {
     },
 }
 
-MIGRATION_MODULES = {"django_borg": None}
+MIGRATION_MODULES = {"django_borg": None, "testapp": None}
 
 USE_TZ = True
 

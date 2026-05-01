@@ -2,7 +2,7 @@ import pytest
 from testapp.models import Product
 
 from django_borg.ai import FakeInferencer
-from django_borg.ingestion import SchemaAssimilator
+from django_borg.ingestion import AssimilationCost, AssimilationResult, SchemaAssimilator
 from django_borg.models import TargetField, TargetSchema, Voter
 
 
@@ -43,3 +43,21 @@ def test_reinit_is_idempotent():
     SchemaAssimilator(target_schema=Product, ai=FakeInferencer())
     assert TargetSchema.objects.filter(name="Product").count() == 1
     assert TargetField.objects.filter(schema__name="Product").count() == 3
+
+
+def test_assimilation_cost_arithmetic():
+    cost = AssimilationCost()
+    cost.record_ai()
+    cost.record_ai()
+    cost.record_deterministic()
+    assert cost.ai_calls == 2
+    assert cost.deterministic_hits == 1
+
+
+def test_assimilation_result_carries_product_and_unresolved():
+    result = AssimilationResult(
+        product=object(),
+        unresolved=["mystery_field"],
+        cost=AssimilationCost(),
+    )
+    assert result.unresolved == ["mystery_field"]

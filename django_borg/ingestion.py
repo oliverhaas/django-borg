@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from django.db import models as django_models
@@ -9,6 +10,25 @@ from django_borg.models import TargetField, TargetSchema, Voter
 
 if TYPE_CHECKING:
     from django_borg.ai import Inferencer
+
+
+@dataclass
+class AssimilationCost:
+    ai_calls: int = 0
+    deterministic_hits: int = 0
+
+    def record_ai(self) -> None:
+        self.ai_calls += 1
+
+    def record_deterministic(self) -> None:
+        self.deterministic_hits += 1
+
+
+@dataclass
+class AssimilationResult:
+    product: object
+    unresolved: list[str] = field(default_factory=list)
+    cost: AssimilationCost = field(default_factory=AssimilationCost)
 
 
 class SchemaAssimilator:
@@ -27,15 +47,15 @@ class SchemaAssimilator:
     @staticmethod
     def _sync_target_schema(model: type[django_models.Model]) -> TargetSchema:
         schema, _ = TargetSchema.objects.update_or_create(name=model.__name__)
-        for field in model._meta.get_fields():  # noqa: SLF001
-            if not isinstance(field, django_models.Field):
+        for model_field in model._meta.get_fields():  # noqa: SLF001
+            if not isinstance(model_field, django_models.Field):
                 continue
-            if field.auto_created:
+            if model_field.auto_created:
                 continue
             TargetField.objects.update_or_create(
                 schema=schema,
-                name=field.name,
-                defaults={"is_enum": bool(field.choices)},
+                name=model_field.name,
+                defaults={"is_enum": bool(model_field.choices)},
             )
         return schema
 

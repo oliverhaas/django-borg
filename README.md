@@ -18,6 +18,29 @@ Pre-alpha. Under active development.
 pip install django-borg
 ```
 
+## Quickstart
+
+```python
+from django_borg import SchemaAssimilator, FakeInferencer
+from myapp.models import Product
+
+# In a real project, swap FakeInferencer for an Inferencer that calls your LLM.
+ai = FakeInferencer(
+    field_map={"Farbe": "color", "Titel": "title"},
+    value_map={("color", "Rot"): "red"},
+)
+
+borg = SchemaAssimilator(target_schema=Product, ai=ai)
+
+for raw in supplier_feed:  # e.g. {"Titel": "T-Shirt", "Farbe": "Rot"}
+    result = borg.assimilate(raw, source="acme-supplier")
+    if result.unresolved:
+        log.warning("Could not resolve: %s", result.unresolved)
+    result.product.save()
+```
+
+Each AI inference is recorded as a vote on the corresponding mapping. Once a mapping crosses `BORG_MIN_WEIGHT` (default 5) and `BORG_MIN_CONFIDENCE` (default 0.9), subsequent calls skip the AI entirely. Reviewer-authored votes graduate mappings instantly thanks to their higher weight.
+
 ## Documentation
 
 Full documentation at [oliverhaas.github.io/django-borg](https://oliverhaas.github.io/django-borg/)

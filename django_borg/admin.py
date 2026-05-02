@@ -1,7 +1,9 @@
 from typing import TYPE_CHECKING
 
 from django.contrib import admin
+from django.db.models import Q
 
+from django_borg import conf
 from django_borg.models import (
     FieldMapping,
     Rule,
@@ -15,6 +17,7 @@ from django_borg.models import (
 )
 
 if TYPE_CHECKING:
+    from django.db.models import QuerySet
     from django.http import HttpRequest
 
 
@@ -105,6 +108,37 @@ class SourceFieldAdmin(admin.ModelAdmin):
     autocomplete_fields = ("schema",)
 
 
+class NeedsReviewFilter(admin.SimpleListFilter):
+    """Mapping has at least one vote but is not yet graduated.
+
+    Mappings with zero votes are *unsurveyed*, not in need of review;
+    mappings already above thresholds are *graduated* and don't need review.
+    """
+
+    title = "review status"
+    parameter_name = "needs_review"
+
+    def lookups(
+        self,
+        request: "HttpRequest",  # noqa: ARG002
+        model_admin: admin.ModelAdmin,  # noqa: ARG002
+    ) -> list[tuple[str, str]]:
+        return [("yes", "Needs review")]
+
+    def queryset(
+        self,
+        request: "HttpRequest",  # noqa: ARG002
+        qs: "QuerySet",
+    ) -> "QuerySet":
+        if self.value() != "yes":
+            return qs
+        min_weight = conf.min_weight()
+        min_confidence = conf.min_confidence()
+        return qs.exclude(total_weight=0).filter(
+            Q(total_weight__lt=min_weight) | Q(confidence__lt=min_confidence),
+        )
+
+
 @admin.register(FieldMapping)
 class FieldMappingAdmin(admin.ModelAdmin):
     list_display = (
@@ -116,7 +150,7 @@ class FieldMappingAdmin(admin.ModelAdmin):
         "total_weight",
         "updated_at",
     )
-    list_filter = ("source_schema", "target_schema")
+    list_filter = (NeedsReviewFilter, "source_schema", "target_schema")
     search_fields = ("source_field", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("source_schema", "target_schema")
@@ -132,7 +166,7 @@ class ValueMappingAdmin(admin.ModelAdmin):
         "total_weight",
         "updated_at",
     )
-    list_filter = ("target_field__schema",)
+    list_filter = (NeedsReviewFilter, "target_field__schema")
     search_fields = ("source_value", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("target_field",)

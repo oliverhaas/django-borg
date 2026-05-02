@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 
@@ -17,6 +17,7 @@ from django_borg.models import (
     Vote,
     Voter,
 )
+from django_borg.reviewers import get_or_create_reviewer_voter
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
@@ -182,6 +183,31 @@ class ConflictFilter(admin.SimpleListFilter):
         return qs.filter(pk__in=conflict_pks)
 
 
+@admin.action(description="Approve current target as reviewer")
+def approve_current_target(
+    modeladmin: admin.ModelAdmin,  # noqa: ARG001
+    request: "HttpRequest",
+    queryset: "QuerySet",
+) -> None:
+    reviewer = get_or_create_reviewer_voter(request.user)
+    approved = 0
+    skipped = 0
+    for mapping in queryset:
+        if not mapping.current_target:
+            skipped += 1
+            continue
+        Vote.objects.create(
+            mapping=mapping,
+            voter=reviewer,
+            agreed_target=mapping.current_target,
+        )
+        approved += 1
+    messages.success(
+        request,
+        f"Approved {approved} mapping(s); skipped {skipped} with no current target.",
+    )
+
+
 @admin.register(FieldMapping)
 class FieldMappingAdmin(admin.ModelAdmin):
     list_display = (
@@ -197,6 +223,7 @@ class FieldMappingAdmin(admin.ModelAdmin):
     search_fields = ("source_field", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("source_schema", "target_schema")
+    actions = (approve_current_target,)
 
 
 @admin.register(ValueMapping)
@@ -213,3 +240,4 @@ class ValueMappingAdmin(admin.ModelAdmin):
     search_fields = ("source_value", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("target_field",)
+    actions = (approve_current_target,)

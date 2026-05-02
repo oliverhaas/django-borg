@@ -9,6 +9,8 @@ from django_borg import conf
 from django_borg.models import TargetField, TargetSchema, Voter
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from django_borg.ai import Inferencer
 
 
@@ -42,9 +44,16 @@ class SchemaAssimilator:
     >>> result = borg.assimilate({"Farbe": "Rot"}, source="acme-supplier")
     """
 
-    def __init__(self, *, target_schema: type[django_models.Model], ai: Inferencer) -> None:
+    def __init__(
+        self,
+        *,
+        target_schema: type[django_models.Model],
+        ai: Inferencer,
+        extract_from: Iterable[str] | None = None,
+    ) -> None:
         self.target_model = target_schema
         self.ai = ai
+        self.extract_from: set[str] = set(extract_from or ())
         self.target_schema = self._sync_target_schema(target_schema)
         self.ai_voter = self._ensure_ai_voter()
 

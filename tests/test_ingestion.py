@@ -13,6 +13,7 @@ from django_borg.models import (
     Vote,
     Voter,
 )
+from django_borg.resolution import EXTRACT_SENTINEL
 from tests import factories
 
 
@@ -175,3 +176,23 @@ def test_assimilation_cost_records_extraction():
     cost.record_extraction()
     assert cost.extraction_calls == 2
     assert cost.ai_calls == 0  # extraction call counter is independent
+
+
+def test_extract_sentinel_value():
+    assert EXTRACT_SENTINEL == "__extract__"
+
+
+@pytest.mark.django_db
+def test_assimilator_accepts_extract_from_iterable():
+    borg = SchemaAssimilator(
+        target_schema=Product,
+        ai=FakeInferencer(),
+        extract_from=["description", "Beschreibung"],
+    )
+    assert borg.extract_from == {"description", "Beschreibung"}
+
+
+@pytest.mark.django_db
+def test_assimilator_extract_from_defaults_to_empty():
+    borg = SchemaAssimilator(target_schema=Product, ai=FakeInferencer())
+    assert borg.extract_from == set()

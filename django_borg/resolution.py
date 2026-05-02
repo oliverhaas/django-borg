@@ -22,6 +22,10 @@ class ResolutionSource(enum.StrEnum):
     AI = "ai"
 
 
+EXTRACT_SENTINEL = "__extract__"
+"""Reserved target value that routes a source field into the extraction path."""
+
+
 @dataclass(frozen=True, slots=True)
 class Resolution:
     target: str | None

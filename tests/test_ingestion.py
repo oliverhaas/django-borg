@@ -322,3 +322,43 @@ def test_assimilate_extraction_passes_only_unfilled_target_fields(borg_with_extr
     _, _, _, requested_fields = extract_calls[0]
     assert "size" not in requested_fields
     assert "color" in requested_fields
+
+
+@pytest.mark.django_db
+def test_rule_with_extract_sentinel_routes_to_extraction():
+    ai = FakeInferencer(
+        extract_map={"some blob": {"color": "rotes"}},
+        value_map={("color", "rotes"): "red"},
+    )
+    borg = SchemaAssimilator(target_schema=Product, ai=ai)
+    schema = TargetSchema.objects.get(name="Product")
+    factories.FieldRuleFactory(
+        target_schema=schema,
+        source_pattern="caption",
+        target=EXTRACT_SENTINEL,
+    )
+
+    result = borg.assimilate({"caption": "some blob"}, source="acme")
+    assert result.product.color == "red"
+    assert result.cost.extraction_calls == 1
+
+
+@pytest.mark.django_db
+def test_rule_extraction_does_not_pollute_field_mapping_table():
+    """A DO rule with __extract__ target should not create a FieldMapping row
+    just for routing; it stays a rule-only construct."""
+    ai = FakeInferencer(
+        extract_map={"blob": {"color": "rotes"}},
+        value_map={("color", "rotes"): "red"},
+    )
+    borg = SchemaAssimilator(target_schema=Product, ai=ai)
+    schema = TargetSchema.objects.get(name="Product")
+    factories.FieldRuleFactory(
+        target_schema=schema,
+        source_pattern="caption",
+        target=EXTRACT_SENTINEL,
+    )
+
+    borg.assimilate({"caption": "blob"}, source="acme")
+    src = SourceSchema.objects.get(name="acme")
+    assert not FieldMapping.objects.filter(source_schema=src, source_field="caption").exists()

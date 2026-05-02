@@ -41,6 +41,34 @@ for raw in supplier_feed:  # e.g. {"Titel": "T-Shirt", "Farbe": "Rot"}
 
 Each AI inference is recorded as a vote on the corresponding mapping. Once a mapping crosses `BORG_MIN_WEIGHT` (default 5) and `BORG_MIN_CONFIDENCE` (default 0.9), subsequent calls skip the AI entirely. Reviewer-authored votes graduate mappings instantly thanks to their higher weight.
 
+### Extraction (free-text columns)
+
+When a supplier ships unstructured text (e.g. a `description` column), declare it
+as an extraction source and let the AI pull multiple canonical fields out of it:
+
+```python
+borg = SchemaAssimilator(
+    target_schema=Product,
+    ai=ai,                              # ai must implement Inferencer.extract(...)
+    extract_from=["description"],
+)
+
+result = borg.assimilate(
+    {
+        "Titel": "T-Shirt",
+        "description": "100% Baumwolle, rotes T-Shirt, Größe M",
+    },
+    source="acme-supplier",
+)
+# result.product.color == "red"  (extracted "rotes", canonicalised via ValueMapping)
+# result.cost.extraction_calls == 1
+```
+
+Direct field mappings always run first; extraction only fills target fields that
+weren't populated in the direct pass. You can also flag extraction sources via a
+DO rule whose target is `EXTRACT_SENTINEL` (`"__extract__"`) — useful when the
+choice of extraction source is itself something you want to vote on.
+
 ## Documentation
 
 Full documentation at [oliverhaas.github.io/django-borg](https://oliverhaas.github.io/django-borg/)

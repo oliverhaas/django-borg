@@ -1849,7 +1849,7 @@ Expected: FAIL — `cannot import name 'lookup_field_mapping'`.
 Add at the bottom:
 
 ```python
-from django_borg.conf import get as get_setting
+from django_borg import conf
 from django_borg.models.mappings import FieldMapping, ValueMapping
 from django_borg.models.schemas import SourceSchema
 
@@ -1859,15 +1859,13 @@ def lookup_field_mapping(
     source_field: str,
     target_schema: "TargetSchema",
 ) -> FieldMapping | None:
-    min_weight = get_setting("BORG_MIN_WEIGHT")
-    min_confidence = get_setting("BORG_MIN_CONFIDENCE")
     return (
         FieldMapping.objects.filter(
             source_schema=source_schema,
             source_field=source_field,
             target_schema=target_schema,
-            total_weight__gte=min_weight,
-            confidence__gte=min_confidence,
+            total_weight__gte=conf.min_weight(),
+            confidence__gte=conf.min_confidence(),
         )
         .first()
     )
@@ -1877,14 +1875,12 @@ def lookup_value_mapping(
     target_field: "TargetField",
     source_value: str,
 ) -> ValueMapping | None:
-    min_weight = get_setting("BORG_MIN_WEIGHT")
-    min_confidence = get_setting("BORG_MIN_CONFIDENCE")
     return (
         ValueMapping.objects.filter(
             target_field=target_field,
             source_value=source_value,
-            total_weight__gte=min_weight,
-            confidence__gte=min_confidence,
+            total_weight__gte=conf.min_weight(),
+            confidence__gte=conf.min_confidence(),
         )
         .first()
     )
@@ -2325,8 +2321,8 @@ from __future__ import annotations
 
 from django.db import models as django_models
 
+from django_borg import conf
 from django_borg.ai import Inferencer
-from django_borg.conf import get as get_setting
 from django_borg.models import TargetField, TargetSchema, Voter
 
 
@@ -2362,12 +2358,10 @@ class SchemaAssimilator:
 
     @staticmethod
     def _ensure_ai_voter() -> Voter:
-        identifier = get_setting("BORG_AI_VOTER_IDENTIFIER")
-        weight = get_setting("BORG_AI_VOTER_WEIGHT")
         voter, _ = Voter.objects.get_or_create(
             kind=Voter.Kind.AI,
-            identifier=identifier,
-            defaults={"weight": weight},
+            identifier=conf.ai_voter_identifier(),
+            defaults={"weight": conf.ai_voter_weight()},
         )
         return voter
 ```

@@ -3,11 +3,13 @@ from typing import TYPE_CHECKING
 from django.contrib import admin
 
 from django_borg.models import (
+    FieldMapping,
     Rule,
     SourceField,
     SourceSchema,
     TargetField,
     TargetSchema,
+    ValueMapping,
     Vote,
     Voter,
 )
@@ -101,3 +103,36 @@ class SourceFieldAdmin(admin.ModelAdmin):
     list_filter = ("schema",)
     search_fields = ("name",)
     autocomplete_fields = ("schema",)
+
+
+@admin.register(FieldMapping)
+class FieldMappingAdmin(admin.ModelAdmin):
+    list_display = (
+        "source_schema",
+        "source_field",
+        "target_schema",
+        "current_target",
+        "confidence",
+        "total_weight",
+        "updated_at",
+    )
+    list_filter = ("source_schema", "target_schema")
+    search_fields = ("source_field", "current_target")
+    readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
+    autocomplete_fields = ("source_schema", "target_schema")
+
+
+@admin.register(ValueMapping)
+class ValueMappingAdmin(admin.ModelAdmin):
+    list_display = (
+        "target_field",
+        "source_value",
+        "current_target",
+        "confidence",
+        "total_weight",
+        "updated_at",
+    )
+    list_filter = ("target_field__schema",)
+    search_fields = ("source_value", "current_target")
+    readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
+    autocomplete_fields = ("target_field",)

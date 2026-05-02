@@ -83,15 +83,20 @@ class SchemaAssimilator:
 
     def assimilate(self, raw_item: dict[str, str], *, source: str) -> AssimilationResult:
         from django_borg.models.schemas import SourceField, SourceSchema  # noqa: PLC0415
-        from django_borg.resolution import resolve_field  # noqa: PLC0415
+        from django_borg.resolution import EXTRACT_SENTINEL, resolve_field  # noqa: PLC0415
 
         source_schema, _ = SourceSchema.objects.get_or_create(name=source)
         cost = AssimilationCost()
         unresolved: list[str] = []
         mapped: dict[str, str] = {}
+        extraction_inputs: list[tuple[str, str]] = []
 
         for src_field_name, src_value in raw_item.items():
             SourceField.objects.get_or_create(schema=source_schema, name=src_field_name)
+
+            if src_field_name in self.extract_from:
+                extraction_inputs.append((src_field_name, src_value))
+                continue
 
             field_res = resolve_field(
                 source_schema,
@@ -101,6 +106,10 @@ class SchemaAssimilator:
                 ai_voter=self.ai_voter,
             )
             self._record_cost(field_res, cost)
+
+            if field_res.target == EXTRACT_SENTINEL:
+                extraction_inputs.append((src_field_name, src_value))
+                continue
 
             if field_res.blocked or field_res.target is None:
                 unresolved.append(src_field_name)
@@ -122,11 +131,56 @@ class SchemaAssimilator:
                 continue
             mapped[target_field_name] = value
 
+        self._run_extraction_pass(extraction_inputs, mapped, unresolved, cost)
+
         return AssimilationResult(
             product=self.target_model(**mapped),
             unresolved=unresolved,
             cost=cost,
         )
+
+    def _run_extraction_pass(
+        self,
+        extraction_inputs: list[tuple[str, str]],
+        mapped: dict[str, str],
+        unresolved: list[str],
+        cost: AssimilationCost,
+    ) -> None:
+        for src_field_name, text in extraction_inputs:
+            if not text:
+                continue
+
+            target_field_names = [f.name for f in self.target_schema.fields.all() if f.name not in mapped]
+            if not target_field_names:
+                continue
+
+            try:
+                extracted = self.ai.extract(
+                    text,
+                    target_schema=self.target_schema.name,
+                    target_fields=target_field_names,
+                )
+            except Exception:  # noqa: BLE001
+                unresolved.append(src_field_name)
+                continue
+
+            cost.record_ai()
+            cost.record_extraction()
+
+            for target_field_name, raw_value in extracted.items():
+                if target_field_name in mapped:
+                    continue
+                try:
+                    target_field = TargetField.objects.get(
+                        schema=self.target_schema,
+                        name=target_field_name,
+                    )
+                except TargetField.DoesNotExist:
+                    continue
+                value = self._resolve_value_or_raw(target_field, raw_value, cost)
+                if value is None:
+                    continue
+                mapped[target_field_name] = value
 
     def _resolve_value_or_raw(
         self,

@@ -196,3 +196,129 @@ def test_assimilator_accepts_extract_from_iterable():
 def test_assimilator_extract_from_defaults_to_empty():
     borg = SchemaAssimilator(target_schema=Product, ai=FakeInferencer())
     assert borg.extract_from == set()
+
+
+@pytest.fixture
+def borg_with_extract(db):
+    ai = FakeInferencer(
+        field_map={"Titel": "title"},
+        value_map={
+            ("color", "rotes"): "red",
+            ("size", "M"): "M",
+        },
+        extract_map={
+            "100% Baumwolle, rotes T-Shirt, Größe M": {
+                "color": "rotes",
+                "size": "M",
+            },
+        },
+    )
+    return SchemaAssimilator(
+        target_schema=Product,
+        ai=ai,
+        extract_from=["description"],
+    )
+
+
+@pytest.mark.django_db
+def test_assimilate_runs_extraction_for_extract_from_source(borg_with_extract):
+    result = borg_with_extract.assimilate(
+        {
+            "Titel": "T-Shirt",
+            "description": "100% Baumwolle, rotes T-Shirt, Größe M",
+        },
+        source="acme",
+    )
+    assert result.product.title == "T-Shirt"
+    assert result.product.color == "red"
+    assert result.product.size == "M"
+
+
+@pytest.mark.django_db
+def test_assimilate_extraction_increments_extraction_calls(borg_with_extract):
+    result = borg_with_extract.assimilate(
+        {"description": "100% Baumwolle, rotes T-Shirt, Größe M"},
+        source="acme",
+    )
+    assert result.cost.extraction_calls == 1
+
+
+@pytest.mark.django_db
+def test_assimilate_skips_extraction_for_blank_text(borg_with_extract):
+    result = borg_with_extract.assimilate(
+        {"description": ""},
+        source="acme",
+    )
+    assert result.cost.extraction_calls == 0
+    # No AI calls at all -- blank text short-circuits.
+    assert result.cost.ai_calls == 0
+
+
+@pytest.mark.django_db
+def test_assimilate_direct_mapping_wins_over_extraction(borg_with_extract):
+    # Direct mapping for "color" via FieldMapping + ValueMapping graduation
+    schema = TargetSchema.objects.get(name="Product")
+    color = TargetField.objects.get(schema=schema, name="color")
+    src = SourceSchema.objects.get_or_create(name="acme")[0]
+    direct_color_field = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Color",
+        target_schema=schema,
+    )
+    color_value = ValueMapping.objects.create(target_field=color, source_value="blau")
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=direct_color_field, voter=reviewer, agreed_target="color")
+    Vote.objects.create(mapping=color_value, voter=reviewer, agreed_target="blue")
+
+    result = borg_with_extract.assimilate(
+        {
+            "Color": "blau",
+            "description": "100% Baumwolle, rotes T-Shirt, Größe M",
+        },
+        source="acme",
+    )
+    # Direct mapping picks blue; extraction's "rotes -> red" does NOT clobber it.
+    assert result.product.color == "blue"
+    # Extraction still runs (size needs filling) -- it just respects already-mapped fields.
+    assert result.product.size == "M"
+
+
+@pytest.mark.django_db
+def test_assimilate_extraction_failure_marks_unresolved(db):
+    ai = FakeInferencer()  # empty extract_map -> raises
+    borg = SchemaAssimilator(
+        target_schema=Product,
+        ai=ai,
+        extract_from=["description"],
+    )
+    result = borg.assimilate({"description": "anything"}, source="acme")
+    assert "description" in result.unresolved
+    # Pass 1 didn't raise; we just lose the extraction output.
+    assert result.product.title == ""
+
+
+@pytest.mark.django_db
+def test_assimilate_extraction_passes_only_unfilled_target_fields(borg_with_extract):
+    # Pre-fill 'size' through a graduated value mapping so extraction is asked only for color.
+    schema = TargetSchema.objects.get(name="Product")
+    size = TargetField.objects.get(schema=schema, name="size")
+    src_schema = SourceSchema.objects.get_or_create(name="acme")[0]
+    size_field = FieldMapping.objects.create(
+        source_schema=src_schema,
+        source_field="Größe",
+        target_schema=schema,
+    )
+    size_value = ValueMapping.objects.create(target_field=size, source_value="M")
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=size_field, voter=reviewer, agreed_target="size")
+    Vote.objects.create(mapping=size_value, voter=reviewer, agreed_target="M")
+
+    borg_with_extract.assimilate(
+        {"Größe": "M", "description": "100% Baumwolle, rotes T-Shirt, Größe M"},
+        source="acme",
+    )
+    extract_calls = [c for c in borg_with_extract.ai.calls if c[0] == "extract"]
+    assert len(extract_calls) == 1
+    _, _, _, requested_fields = extract_calls[0]
+    assert "size" not in requested_fields
+    assert "color" in requested_fields

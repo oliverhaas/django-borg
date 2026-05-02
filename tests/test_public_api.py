@@ -1,4 +1,5 @@
 from django_borg import (
+    EXTRACT_SENTINEL,
     AssimilationCost,
     AssimilationResult,
     FakeInferencer,
@@ -17,3 +18,4 @@ def test_public_api_exports():
     assert AssimilationResult is not None
     assert Resolution is not None
     assert ResolutionSource is not None
+    assert EXTRACT_SENTINEL == "__extract__"

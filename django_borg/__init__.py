@@ -3,6 +3,7 @@
 from typing import Any
 
 __all__ = [
+    "EXTRACT_SENTINEL",
     "AssimilationCost",
     "AssimilationResult",
     "FakeInferencer",
@@ -20,6 +21,7 @@ _LAZY_MODULES = {
     "Inferencer": "django_borg.ai",
     "Resolution": "django_borg.resolution",
     "ResolutionSource": "django_borg.resolution",
+    "EXTRACT_SENTINEL": "django_borg.resolution",
 }
 
 

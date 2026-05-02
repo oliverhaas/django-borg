@@ -101,6 +101,35 @@ class SourceSchemaAdmin(admin.ModelAdmin):
     list_display = ("name", "created_at")
     search_fields = ("name",)
     inlines = (SourceFieldInline,)
+    readonly_fields = (
+        "field_mapping_count",
+        "graduated_field_mapping_count",
+        "pending_field_mapping_count",
+    )
+
+    @admin.display(description="Field mapping count")
+    def field_mapping_count(self, obj: SourceSchema) -> int:
+        return FieldMapping.objects.filter(source_schema=obj).count()
+
+    @admin.display(description="Graduated field mapping count")
+    def graduated_field_mapping_count(self, obj: SourceSchema) -> int:
+        return FieldMapping.objects.filter(
+            source_schema=obj,
+            total_weight__gte=conf.min_weight(),
+            confidence__gte=conf.min_confidence(),
+        ).count()
+
+    @admin.display(description="Pending field mapping count")
+    def pending_field_mapping_count(self, obj: SourceSchema) -> int:
+        return (
+            FieldMapping.objects.filter(source_schema=obj)
+            .exclude(total_weight=0)
+            .exclude(
+                total_weight__gte=conf.min_weight(),
+                confidence__gte=conf.min_confidence(),
+            )
+            .count()
+        )
 
 
 @admin.register(SourceField)

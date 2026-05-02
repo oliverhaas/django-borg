@@ -69,6 +69,25 @@ weren't populated in the direct pass. You can also flag extraction sources via a
 DO rule whose target is `EXTRACT_SENTINEL` (`"__extract__"`) — useful when the
 choice of extraction source is itself something you want to vote on.
 
+## Reviewer admin
+
+Register the project's admin URLs (`path("admin/", admin.site.urls)`) and visit
+`/admin/django_borg/`. Reviewers get:
+
+- **NeedsReview filter** on FieldMapping / ValueMapping changelists — every
+  mapping with at least one vote that hasn't yet graduated.
+- **Conflict filter** — mappings where AI and human votes disagree.
+- **Approve current target** bulk action — writes a reviewer-weight Vote for
+  each selected mapping's `current_target`. With the default
+  `BORG_REVIEWER_VOTER_WEIGHT = 100`, one approval graduates a mapping
+  immediately.
+- **Per-supplier stats** on the SourceSchema detail page — total / graduated /
+  pending field mapping counts.
+
+The reviewer's identity is auto-mapped from `request.user` to a borg
+`Voter(kind=human, identifier=username)` row. Hand-tune individual reviewer
+weights via the Voter admin.
+
 ## Documentation
 
 Full documentation at [oliverhaas.github.io/django-borg](https://oliverhaas.github.io/django-borg/)

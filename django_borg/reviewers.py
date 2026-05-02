@@ -4,10 +4,10 @@ from django_borg import conf
 from django_borg.models import Voter
 
 if TYPE_CHECKING:
-    from django.contrib.auth.models import AbstractBaseUser
+    from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 
-def get_or_create_reviewer_voter(user: "AbstractBaseUser") -> Voter:
+def get_or_create_reviewer_voter(user: "AbstractBaseUser | AnonymousUser") -> Voter:
     """Resolve a Django user to a borg Voter (kind=human).
 
     Auto-creates the Voter on first call with weight ``BORG_REVIEWER_VOTER_WEIGHT``.

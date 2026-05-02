@@ -16,12 +16,16 @@ if TYPE_CHECKING:
 class AssimilationCost:
     ai_calls: int = 0
     deterministic_hits: int = 0
+    extraction_calls: int = 0
 
     def record_ai(self) -> None:
         self.ai_calls += 1
 
     def record_deterministic(self) -> None:
         self.deterministic_hits += 1
+
+    def record_extraction(self) -> None:
+        self.extraction_calls += 1
 
 
 @dataclass

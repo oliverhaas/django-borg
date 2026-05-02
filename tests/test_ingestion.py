@@ -167,3 +167,11 @@ def test_assimilate_blocked_field_skips_assignment(borg):
     result = borg.assimilate({"internal_id": "123", "Titel": "X"}, source="acme")
     assert result.product.title == "X"
     assert "internal_id" in result.unresolved
+
+
+def test_assimilation_cost_records_extraction():
+    cost = AssimilationCost()
+    cost.record_extraction()
+    cost.record_extraction()
+    assert cost.extraction_calls == 2
+    assert cost.ai_calls == 0  # extraction call counter is independent

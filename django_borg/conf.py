@@ -15,3 +15,7 @@ def ai_voter_identifier() -> str:
 
 def ai_voter_weight() -> int:
     return int(getattr(settings, "BORG_AI_VOTER_WEIGHT", 1))
+
+
+def reviewer_voter_weight() -> int:
+    return int(getattr(settings, "BORG_REVIEWER_VOTER_WEIGHT", 100))

@@ -1,4 +1,5 @@
 import factory
+from django.contrib.auth import get_user_model
 from factory.django import DjangoModelFactory
 
 from django_borg.models import (
@@ -126,3 +127,14 @@ class ValueRuleFactory(DjangoModelFactory):
     pattern_type = Rule.PatternType.EXACT
     source_pattern = "Rot"
     target = "red"
+
+
+class UserFactory(DjangoModelFactory):
+    class Meta:
+        model = get_user_model()
+        django_get_or_create = ("username",)
+
+    username = factory.Sequence(lambda n: f"user{n}")
+    email = factory.LazyAttribute(lambda u: f"{u.username}@example.test")
+    is_staff = True
+    is_superuser = True

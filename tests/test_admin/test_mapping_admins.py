@@ -96,3 +96,58 @@ def test_needs_review_filter_excludes_graduated_mappings(admin_client):
     response = admin_client.get("/admin/django_borg/fieldmapping/?needs_review=yes")
     assert response.status_code == 200
     assert b"Graduated" not in response.content
+
+
+@pytest.mark.django_db
+def test_conflict_filter_flags_mappings_where_ai_and_human_disagree(admin_client):
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    fm = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Disputed",
+        target_schema=tgt,
+    )
+    ai = factories.AiVoterFactory()
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=fm, voter=ai, agreed_target="title")
+    Vote.objects.create(mapping=fm, voter=reviewer, agreed_target="color")
+
+    response = admin_client.get("/admin/django_borg/fieldmapping/?conflict=yes")
+    assert response.status_code == 200
+    assert b"Disputed" in response.content
+
+
+@pytest.mark.django_db
+def test_conflict_filter_excludes_agreement(admin_client):
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    fm = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Agreed",
+        target_schema=tgt,
+    )
+    ai = factories.AiVoterFactory()
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=fm, voter=ai, agreed_target="title")
+    Vote.objects.create(mapping=fm, voter=reviewer, agreed_target="title")
+
+    response = admin_client.get("/admin/django_borg/fieldmapping/?conflict=yes")
+    assert response.status_code == 200
+    assert b"Agreed" not in response.content
+
+
+@pytest.mark.django_db
+def test_conflict_filter_excludes_single_voter_kind(admin_client):
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    fm = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="OnlyAi",
+        target_schema=tgt,
+    )
+    ai = factories.AiVoterFactory()
+    Vote.objects.create(mapping=fm, voter=ai, agreed_target="title")
+
+    response = admin_client.get("/admin/django_borg/fieldmapping/?conflict=yes")
+    assert response.status_code == 200
+    assert b"OnlyAi" not in response.content

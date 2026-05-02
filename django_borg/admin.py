@@ -1,6 +1,8 @@
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from django.contrib import admin
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 
 from django_borg import conf
@@ -139,6 +141,47 @@ class NeedsReviewFilter(admin.SimpleListFilter):
         )
 
 
+class ConflictFilter(admin.SimpleListFilter):
+    """Mapping has at least one AI vote and one human vote with differing target sets."""
+
+    title = "conflict"
+    parameter_name = "conflict"
+
+    def lookups(
+        self,
+        request: "HttpRequest",  # noqa: ARG002
+        model_admin: admin.ModelAdmin,  # noqa: ARG002
+    ) -> list[tuple[str, str]]:
+        return [("yes", "AI / human disagree")]
+
+    def queryset(
+        self,
+        request: "HttpRequest",  # noqa: ARG002
+        qs: "QuerySet",
+    ) -> "QuerySet":
+        if self.value() != "yes":
+            return qs
+        ct = ContentType.objects.get_for_model(qs.model)
+        per_mapping: dict[int, dict[str, set[str]]] = defaultdict(
+            lambda: {"ai": set(), "human": set()},
+        )
+        votes = (
+            Vote.objects.filter(content_type=ct, object_id__in=qs.values_list("pk", flat=True))
+            .select_related("voter")
+            .values("object_id", "voter__kind", "agreed_target")
+        )
+        for v in votes:
+            kind = v["voter__kind"]
+            if kind in ("ai", "human"):
+                per_mapping[v["object_id"]][kind].add(v["agreed_target"])
+        conflict_pks = [
+            pk
+            for pk, by_kind in per_mapping.items()
+            if by_kind["ai"] and by_kind["human"] and by_kind["ai"] != by_kind["human"]
+        ]
+        return qs.filter(pk__in=conflict_pks)
+
+
 @admin.register(FieldMapping)
 class FieldMappingAdmin(admin.ModelAdmin):
     list_display = (
@@ -150,7 +193,7 @@ class FieldMappingAdmin(admin.ModelAdmin):
         "total_weight",
         "updated_at",
     )
-    list_filter = (NeedsReviewFilter, "source_schema", "target_schema")
+    list_filter = (NeedsReviewFilter, ConflictFilter, "source_schema", "target_schema")
     search_fields = ("source_field", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("source_schema", "target_schema")
@@ -166,7 +209,7 @@ class ValueMappingAdmin(admin.ModelAdmin):
         "total_weight",
         "updated_at",
     )
-    list_filter = (NeedsReviewFilter, "target_field__schema")
+    list_filter = (NeedsReviewFilter, ConflictFilter, "target_field__schema")
     search_fields = ("source_value", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("target_field",)

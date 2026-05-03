@@ -231,3 +231,58 @@ def test_bulk_approve_works_on_value_mappings(admin_client, admin_user):
     vm.refresh_from_db()
     assert vm.total_weight == 101
     assert vm.current_target == "red"
+
+
+@pytest.mark.django_db
+def test_drift_filter_flags_mapping_with_diverging_latest_ai_vote(admin_client):
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    fm = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Drifty",
+        target_schema=tgt,
+    )
+    reviewer = factories.ReviewerVoterFactory()
+    ai = factories.AiVoterFactory()
+    Vote.objects.create(mapping=fm, voter=reviewer, agreed_target="color")  # current_target="color"
+    Vote.objects.create(mapping=fm, voter=ai, agreed_target="hue")  # latest AI disagrees
+
+    response = admin_client.get("/admin/django_borg/fieldmapping/?drift=yes")
+    assert response.status_code == 200
+    assert b"Drifty" in response.content
+
+
+@pytest.mark.django_db
+def test_drift_filter_excludes_mapping_without_ai_votes(admin_client):
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    fm = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="NoAi",
+        target_schema=tgt,
+    )
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=fm, voter=reviewer, agreed_target="color")
+
+    response = admin_client.get("/admin/django_borg/fieldmapping/?drift=yes")
+    assert response.status_code == 200
+    assert b"NoAi" not in response.content
+
+
+@pytest.mark.django_db
+def test_drift_filter_excludes_when_latest_ai_agrees(admin_client):
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    fm = FieldMapping.objects.create(
+        source_schema=src,
+        source_field="Stable",
+        target_schema=tgt,
+    )
+    reviewer = factories.ReviewerVoterFactory()
+    ai = factories.AiVoterFactory()
+    Vote.objects.create(mapping=fm, voter=reviewer, agreed_target="color")
+    Vote.objects.create(mapping=fm, voter=ai, agreed_target="color")  # AI agrees
+
+    response = admin_client.get("/admin/django_borg/fieldmapping/?drift=yes")
+    assert response.status_code == 200
+    assert b"Stable" not in response.content

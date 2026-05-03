@@ -212,6 +212,47 @@ class ConflictFilter(admin.SimpleListFilter):
         return qs.filter(pk__in=conflict_pks)
 
 
+class DriftFilter(admin.SimpleListFilter):
+    """Latest AI vote on the mapping disagrees with its current_target."""
+
+    title = "drift"
+    parameter_name = "drift"
+
+    def lookups(
+        self,
+        request: "HttpRequest",  # noqa: ARG002
+        model_admin: admin.ModelAdmin,  # noqa: ARG002
+    ) -> list[tuple[str, str]]:
+        return [("yes", "Latest AI vote disagrees")]
+
+    def queryset(
+        self,
+        request: "HttpRequest",  # noqa: ARG002
+        qs: "QuerySet",
+    ) -> "QuerySet":
+        if self.value() != "yes":
+            return qs
+        ct = ContentType.objects.get_for_model(qs.model)
+        latest_ai_per_mapping: dict[int, str] = {}
+        ai_votes = (
+            Vote.objects.filter(
+                content_type=ct,
+                object_id__in=qs.values_list("pk", flat=True),
+                voter__kind=Voter.Kind.AI,
+            )
+            .order_by("object_id", "-created_at")
+            .values("object_id", "agreed_target")
+        )
+        for v in ai_votes:
+            latest_ai_per_mapping.setdefault(v["object_id"], v["agreed_target"])
+
+        current_targets: dict[int, str] = dict(
+            qs.values_list("pk", "current_target"),
+        )
+        drift_pks = [pk for pk, latest_ai in latest_ai_per_mapping.items() if latest_ai != current_targets.get(pk, "")]
+        return qs.filter(pk__in=drift_pks)
+
+
 @admin.action(description="Approve current target as reviewer")
 def approve_current_target(
     modeladmin: admin.ModelAdmin,  # noqa: ARG001
@@ -248,7 +289,7 @@ class FieldMappingAdmin(admin.ModelAdmin):
         "total_weight",
         "updated_at",
     )
-    list_filter = (NeedsReviewFilter, ConflictFilter, "source_schema", "target_schema")
+    list_filter = (NeedsReviewFilter, ConflictFilter, DriftFilter, "source_schema", "target_schema")
     search_fields = ("source_field", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("source_schema", "target_schema")
@@ -265,7 +306,7 @@ class ValueMappingAdmin(admin.ModelAdmin):
         "total_weight",
         "updated_at",
     )
-    list_filter = (NeedsReviewFilter, ConflictFilter, "target_field__schema")
+    list_filter = (NeedsReviewFilter, ConflictFilter, DriftFilter, "target_field__schema")
     search_fields = ("source_value", "current_target")
     readonly_fields = ("current_target", "confidence", "total_weight", "created_at", "updated_at")
     autocomplete_fields = ("target_field",)

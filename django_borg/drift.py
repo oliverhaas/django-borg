@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from django_borg import conf
-from django_borg.models import FieldMapping, Vote, Voter
+from django_borg.models import FieldMapping, ValueMapping, Vote, Voter
 
 if TYPE_CHECKING:
     from django.db import models as django_models
@@ -51,17 +51,18 @@ class DriftRunner:
         result = DriftRunResult()
         min_weight = conf.min_weight()
         min_confidence = conf.min_confidence()
+        target_schema_name = self.target_model.__name__
 
-        candidates = FieldMapping.objects.filter(
-            target_schema__name=self.target_model.__name__,
+        field_candidates = FieldMapping.objects.filter(
+            target_schema__name=target_schema_name,
             total_weight__gte=min_weight,
             confidence__gte=min_confidence,
         )
-        for mapping in candidates:
+        for mapping in field_candidates:
             try:
                 target = self.ai.map_field(
                     mapping.source_field,
-                    target_schema=self.target_model.__name__,
+                    target_schema=target_schema_name,
                 )
             except Exception:  # noqa: BLE001
                 result.skipped_ai_failure += 1
@@ -72,5 +73,26 @@ class DriftRunner:
                 agreed_target=target,
             )
             result.field_mappings_revoted += 1
+
+        value_candidates = ValueMapping.objects.filter(
+            target_field__schema__name=target_schema_name,
+            total_weight__gte=min_weight,
+            confidence__gte=min_confidence,
+        ).select_related("target_field")
+        for mapping in value_candidates:
+            try:
+                target = self.ai.map_value(
+                    mapping.source_value,
+                    target_field=mapping.target_field.name,
+                )
+            except Exception:  # noqa: BLE001
+                result.skipped_ai_failure += 1
+                continue
+            Vote.objects.create(
+                mapping=mapping,
+                voter=self.ai_voter,
+                agreed_target=target,
+            )
+            result.value_mappings_revoted += 1
 
         return result

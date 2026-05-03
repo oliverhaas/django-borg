@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 from testapp.models import Product
 
 from django_borg.ai import FakeInferencer
@@ -132,3 +135,92 @@ def test_drift_runner_only_drifts_value_mappings_under_target_schema(db):
     runner = DriftRunner(target_schema=Product, ai=ai)
     result = runner.run()
     assert result.value_mappings_revoted == 0  # Product has no value mappings
+
+
+@pytest.mark.django_db
+def test_drift_runner_older_than_skips_recent_ai_votes(graduated_field_mapping):
+    ai_voter = factories.AiVoterFactory()
+    Vote.objects.create(mapping=graduated_field_mapping, voter=ai_voter, agreed_target="color")
+    # Most recent ai vote is "now" -- older_than=1h should skip it.
+    ai = FakeInferencer(field_map={"Farbe": "color"})
+    runner = DriftRunner(target_schema=Product, ai=ai)
+    result = runner.run(older_than=timedelta(hours=1))
+    assert result.skipped_recent == 1
+    assert result.field_mappings_revoted == 0
+
+
+@pytest.mark.django_db
+def test_drift_runner_older_than_runs_when_no_ai_vote(graduated_field_mapping):
+    """No prior AI vote -> always run regardless of older_than."""
+    ai = FakeInferencer(field_map={"Farbe": "color"})
+    runner = DriftRunner(target_schema=Product, ai=ai)
+    result = runner.run(older_than=timedelta(days=365))
+    assert result.field_mappings_revoted == 1
+
+
+@pytest.mark.django_db
+def test_drift_runner_older_than_runs_when_ai_vote_is_old(graduated_field_mapping):
+    ai_voter = factories.AiVoterFactory()
+    old_vote = Vote.objects.create(
+        mapping=graduated_field_mapping,
+        voter=ai_voter,
+        agreed_target="color",
+    )
+    # Backdate the vote.
+    Vote.objects.filter(pk=old_vote.pk).update(
+        created_at=timezone.now() - timedelta(days=10),
+    )
+    ai = FakeInferencer(field_map={"Farbe": "color"})
+    runner = DriftRunner(target_schema=Product, ai=ai)
+    result = runner.run(older_than=timedelta(days=1))
+    assert result.field_mappings_revoted == 1
+
+
+@pytest.mark.django_db
+def test_drift_runner_source_filter_restricts_to_supplier(graduated_field_mapping):
+    other_src = SourceSchema.objects.create(name="other")
+    tgt = TargetSchema.objects.get(name="Product")
+    other_fm = FieldMapping.objects.create(
+        source_schema=other_src,
+        source_field="Farbe",
+        target_schema=tgt,
+    )
+    reviewer = factories.ReviewerVoterFactory()
+    Vote.objects.create(mapping=other_fm, voter=reviewer, agreed_target="color")
+
+    ai = FakeInferencer(field_map={"Farbe": "color"})
+    runner = DriftRunner(target_schema=Product, ai=ai)
+    result = runner.run(source="acme")
+    # Only the "acme" mapping is drifted; "other" stays untouched.
+    assert result.field_mappings_revoted == 1
+    other_fm.refresh_from_db()
+    assert other_fm.votes.filter(voter__kind="ai").count() == 0
+
+
+@pytest.mark.django_db
+def test_drift_runner_source_skips_value_mappings(graduated_value_mapping):
+    """ValueMappings are supplier-agnostic; passing source= disables them."""
+    ai = FakeInferencer(value_map={("color", "Rot"): "red"})
+    runner = DriftRunner(target_schema=Product, ai=ai)
+    result = runner.run(source="acme")
+    assert result.value_mappings_revoted == 0
+
+
+@pytest.mark.django_db
+def test_drift_runner_limit_caps_total_iterations(db):
+    """Three graduated field mappings; limit=2 stops after the second."""
+    src = SourceSchema.objects.create(name="acme")
+    tgt = TargetSchema.objects.create(name="Product")
+    reviewer = factories.ReviewerVoterFactory()
+    for name in ["A", "B", "C"]:
+        fm = FieldMapping.objects.create(
+            source_schema=src,
+            source_field=name,
+            target_schema=tgt,
+        )
+        Vote.objects.create(mapping=fm, voter=reviewer, agreed_target="title")
+
+    ai = FakeInferencer(field_map={"A": "title", "B": "title", "C": "title"})
+    runner = DriftRunner(target_schema=Product, ai=ai)
+    result = runner.run(limit=2)
+    assert result.field_mappings_revoted == 2

@@ -106,3 +106,51 @@ def test_custom_prompt_for_value_is_used():
     inferencer.map_value("Rot", target_field="color")
     prompt, _ = agent.calls[0]
     assert prompt.startswith("VALUE ")
+
+
+def test_extract_returns_filtered_dict():
+    def handler(prompt: str, output_type: type[BaseModel]):
+        return output_type(values={"color": "rotes", "size": "M", "noise": "ignored"})
+
+    agent = FakeAgent(handler)
+    inferencer = StructuredOutputInferencer(
+        agent=agent,
+        target_fields_for=lambda _: ["color", "size", "title"],
+    )
+    out = inferencer.extract(
+        "100% Baumwolle, rotes T-Shirt, Größe M",
+        target_schema="Product",
+        target_fields=["color", "size"],
+    )
+    # 'noise' is dropped because it isn't in target_fields
+    assert out == {"color": "rotes", "size": "M"}
+
+
+def test_extract_passes_target_fields_to_prompt():
+    def handler(prompt: str, output_type: type[BaseModel]):
+        return output_type(values={})
+
+    agent = FakeAgent(handler)
+    inferencer = StructuredOutputInferencer(
+        agent=agent,
+        target_fields_for=lambda _: [],
+    )
+    inferencer.extract("text", target_schema="Product", target_fields=["color", "size"])
+    prompt, _ = agent.calls[0]
+    assert "color" in prompt
+    assert "size" in prompt
+
+
+def test_custom_prompt_for_extract_is_used():
+    def handler(prompt: str, output_type: type[BaseModel]):
+        return output_type(values={})
+
+    agent = FakeAgent(handler)
+    inferencer = StructuredOutputInferencer(
+        agent=agent,
+        target_fields_for=lambda _: [],
+        prompt_for_extract=lambda text, schema, fields: f"EX {text} {schema} {fields}",
+    )
+    inferencer.extract("blob", target_schema="Product", target_fields=["color"])
+    prompt, _ = agent.calls[0]
+    assert prompt.startswith("EX ")

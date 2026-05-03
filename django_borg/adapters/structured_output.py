@@ -20,6 +20,10 @@ class _ValueChoice(BaseModel):
     target_value: str
 
 
+class _ExtractedFields(BaseModel):
+    values: dict[str, str]
+
+
 def _default_target_fields_for(schema_name: str) -> list[str]:
     from django_borg.models import TargetField  # noqa: PLC0415
 
@@ -51,6 +55,22 @@ def _default_prompt_for_value(source: str, target_field: str) -> str:
     )
 
 
+def _default_prompt_for_extract(
+    text: str,
+    target_schema: str,
+    target_fields: list[str],
+) -> str:
+    return (
+        f"Extract structured values from unstructured supplier text.\n"
+        f"Target schema: {target_schema}\n"
+        f"Fields to extract: {', '.join(target_fields)}\n"
+        f"Source text: {text!r}\n"
+        f"Reply with a JSON object under `values`. Each key is one of the\n"
+        f"requested fields; each value is the extracted raw string. Omit fields\n"
+        f"you cannot extract."
+    )
+
+
 class StructuredOutputInferencer:
     """Reference Inferencer that delegates to a structured-output agent.
 
@@ -67,11 +87,13 @@ class StructuredOutputInferencer:
         target_fields_for: Callable[[str], list[str]] | None = None,
         prompt_for_field: Callable[[str, str, list[str]], str] | None = None,
         prompt_for_value: Callable[[str, str], str] | None = None,
+        prompt_for_extract: Callable[[str, str, list[str]], str] | None = None,
     ) -> None:
         self.agent = agent
         self.target_fields_for = target_fields_for or _default_target_fields_for
         self.prompt_for_field = prompt_for_field or _default_prompt_for_field
         self.prompt_for_value = prompt_for_value or _default_prompt_for_value
+        self.prompt_for_extract = prompt_for_extract or _default_prompt_for_extract
 
     def map_field(self, source: str, *, target_schema: str) -> str:
         target_fields = self.target_fields_for(target_schema)
@@ -83,3 +105,15 @@ class StructuredOutputInferencer:
         prompt = self.prompt_for_value(source, target_field)
         result = self.agent.run_sync(prompt, output_type=_ValueChoice)
         return result.output.target_value
+
+    def extract(
+        self,
+        text: str,
+        *,
+        target_schema: str,
+        target_fields: list[str],
+    ) -> dict[str, str]:
+        prompt = self.prompt_for_extract(text, target_schema, target_fields)
+        result = self.agent.run_sync(prompt, output_type=_ExtractedFields)
+        requested = set(target_fields)
+        return {k: v for k, v in result.output.values.items() if k in requested}

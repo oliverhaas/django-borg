@@ -77,3 +77,32 @@ def test_custom_prompt_for_field_is_used():
     inferencer.map_field("Farbe", target_schema="Product")
     prompt, _ = agent.calls[0]
     assert prompt.startswith("CUSTOM ")
+
+
+def test_map_value_returns_agent_choice():
+    def handler(prompt: str, output_type: type[BaseModel]):
+        assert "Rot" in prompt
+        assert "color" in prompt
+        return output_type(target_value="red")
+
+    agent = FakeAgent(handler)
+    inferencer = StructuredOutputInferencer(
+        agent=agent,
+        target_fields_for=lambda _: ["color"],
+    )
+    assert inferencer.map_value("Rot", target_field="color") == "red"
+
+
+def test_custom_prompt_for_value_is_used():
+    def handler(prompt: str, output_type: type[BaseModel]):
+        return output_type(target_value="red")
+
+    agent = FakeAgent(handler)
+    inferencer = StructuredOutputInferencer(
+        agent=agent,
+        target_fields_for=lambda _: ["color"],
+        prompt_for_value=lambda source, target_field: f"VALUE {source} {target_field}",
+    )
+    inferencer.map_value("Rot", target_field="color")
+    prompt, _ = agent.calls[0]
+    assert prompt.startswith("VALUE ")

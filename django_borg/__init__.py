@@ -6,6 +6,8 @@ __all__ = [
     "EXTRACT_SENTINEL",
     "AssimilationCost",
     "AssimilationResult",
+    "DriftRunResult",
+    "DriftRunner",
     "FakeInferencer",
     "Inferencer",
     "Resolution",
@@ -22,6 +24,8 @@ _LAZY_MODULES = {
     "Resolution": "django_borg.resolution",
     "ResolutionSource": "django_borg.resolution",
     "EXTRACT_SENTINEL": "django_borg.resolution",
+    "DriftRunner": "django_borg.drift",
+    "DriftRunResult": "django_borg.drift",
 }
 
 

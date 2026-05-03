@@ -88,6 +88,34 @@ The reviewer's identity is auto-mapped from `request.user` to a borg
 `Voter(kind=human, identifier=username)` row. Hand-tune individual reviewer
 weights via the Voter admin.
 
+## Drift detection
+
+Re-run AI inference on already-graduated mappings to catch supplier or model
+drift:
+
+```python
+from datetime import timedelta
+from django_borg import DriftRunner
+
+runner = DriftRunner(target_schema=Product, ai=ai)
+result = runner.run(
+    source="acme-supplier",         # restrict field mappings to one supplier (optional)
+    older_than=timedelta(days=30),  # skip mappings whose latest AI vote is fresh (optional)
+    limit=100,                       # cap total iterations (optional)
+)
+# result.field_mappings_revoted, result.value_mappings_revoted,
+# result.skipped_recent, result.skipped_ai_failure
+```
+
+Each AI re-vote is a normal Vote — the post_save signal recomputes confidence,
+and any divergence shows up in the **Drift** admin filter on FieldMapping /
+ValueMapping changelists ("latest AI vote disagrees with current target"). When
+human-weight votes still keep a mapping graduated despite AI drift, the drift
+filter still flags it for review.
+
+Schedule the runner from a Celery beat task, a cron job, or your own
+management command — the package leaves cadence to the consumer.
+
 ## Documentation
 
 Full documentation at [oliverhaas.github.io/django-borg](https://oliverhaas.github.io/django-borg/)

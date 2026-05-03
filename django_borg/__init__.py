@@ -13,6 +13,7 @@ __all__ = [
     "Resolution",
     "ResolutionSource",
     "SchemaAssimilator",
+    "StructuredOutputInferencer",
 ]
 
 _LAZY_MODULES = {
@@ -26,6 +27,7 @@ _LAZY_MODULES = {
     "EXTRACT_SENTINEL": "django_borg.resolution",
     "DriftRunner": "django_borg.drift",
     "DriftRunResult": "django_borg.drift",
+    "StructuredOutputInferencer": "django_borg.adapters.structured_output",
 }
 
 

@@ -9,6 +9,7 @@ from django_borg import (
     Resolution,
     ResolutionSource,
     SchemaAssimilator,
+    StructuredOutputInferencer,
 )
 
 
@@ -26,3 +27,7 @@ def test_public_api_exports():
 def test_drift_exports():
     assert DriftRunner is not None
     assert DriftRunResult is not None
+
+
+def test_structured_output_inferencer_export():
+    assert StructuredOutputInferencer is not None

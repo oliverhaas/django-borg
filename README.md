@@ -116,6 +116,30 @@ filter still flags it for review.
 Schedule the runner from a Celery beat task, a cron job, or your own
 management command — the package leaves cadence to the consumer.
 
+## Reference AI adapter
+
+For consumers using a structured-output LLM client, the package ships
+`StructuredOutputInferencer` — a duck-typed wrapper that turns any agent with
+a `run_sync(prompt, *, output_type=PydanticModel)` shape into an
+`Inferencer`. Pydantic AI's `Agent` matches verbatim:
+
+```python
+# pip install django-borg[adapters] pydantic-ai
+from pydantic_ai import Agent
+from django_borg import SchemaAssimilator, StructuredOutputInferencer
+
+ai = StructuredOutputInferencer(agent=Agent("openai:gpt-4o"))
+borg = SchemaAssimilator(target_schema=Product, ai=ai)
+```
+
+For Instructor or a raw OpenAI client with JSON mode, write a five-line
+adapter that exposes the same `run_sync` shape. Defaults: target field
+discovery queries Django's `TargetField` table; prompts are short English
+strings overridable per-method (`prompt_for_field`, `prompt_for_value`,
+`prompt_for_extract`).
+
+The `[adapters]` extra installs `pydantic` only — no LLM client is bundled.
+
 ## Documentation
 
 Full documentation at [oliverhaas.github.io/django-borg](https://oliverhaas.github.io/django-borg/)

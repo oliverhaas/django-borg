@@ -41,7 +41,7 @@ Repository = "https://github.com/oliverhaas/django-borg.git"
 Changelog = "https://oliverhaas.github.io/django-borg/reference/changelog/"
 
 [project.optional-dependencies]
-adapters = ["pydantic>=2,<3"]
+adapters = ["pydantic>=2.13.4,<3"]
 
 [dependency-groups]
 dev = [
@@ -51,9 +51,9 @@ dev = [
   "pytest-xdist==3.8.0",
   "ruff==0.15.12",
   "factory-boy==3.3.3",
-  "mypy==1.20.2",
+  "mypy==2.0.0",
   "django-stubs==6.0.3",
-  "pydantic>=2,<3",
+  "pydantic>=2.13.4,<3",
   "pytest-django==4.12.0",
 ]
 docs = ["mkdocs==1.6.1", "mkdocs-material==9.7.6", "mike==2.2.0"]
